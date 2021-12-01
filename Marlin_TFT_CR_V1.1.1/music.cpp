@@ -30,24 +30,25 @@ NOTE_B6,
 };
 
 int melody[] = {
-NOTE_F7,
-NOTE_C7,
+NOTE_D6,
+NOTE_D6,
 NOTE_D7,
-NOTE_E7,
-NOTE_D7,
-NOTE_G7,
 NOTE_A7,
-0,
+NOTE_GS7,
+NOTE_G7,
+NOTE_F7,
+NOTE_D6,
+NOTE_F7,
+NOTE_G7,
 };
 
 int noteDurations[] = {
-
-  10,10,8,8,4,4,1,4,
+  10,10,8,8,10,8,6,10,10,10
 };
 
 void PowerOnMusic()
 {
-	for (int thisNote = 0; thisNote <8; thisNote++) {
+	for (int thisNote = 0; thisNote <10; thisNote++) {
     int noteDuration = 1000/noteDurations[thisNote];
     tone(Beeper_pin, melody[thisNote],noteDuration);
     int pauseBetweenNotes = noteDuration * 2;
