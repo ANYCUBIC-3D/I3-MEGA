@@ -62,18 +62,23 @@
     #define Y2_DIR_PIN         34
     #define Y2_ENABLE_PIN      30
 
-    #define Z2_STEP_PIN        36
-    #define Z2_DIR_PIN         34
-    #define Z2_ENABLE_PIN      30
+    // Needs to use Z2 properly rather than E1
+    #define Z2_STEP_PIN        -1
+    #define Z2_DIR_PIN         -1
+    #define Z2_ENABLE_PIN      -1
 
     #define E0_STEP_PIN        26
     #define E0_DIR_PIN         28
     #define E0_ENABLE_PIN      24
 
-    #define E1_STEP_PIN        36
-    #define E1_DIR_PIN         34
-    #define E1_ENABLE_PIN      30
+    // E1 will be used as linear actuator rather than stepper
+    #define LOADING_STEP_PIN   36
+    #define LOADING_DIR_DIR    34
+    #define LOADING_ENABLE_PIN 30
 
+    #define E1_STEP_PIN        -1
+    #define E1_DIR_PIN         -1
+    #define E1_ENABLE_PIN      -1
 
     #define SDPOWER            -1
     #define SDSS               53
