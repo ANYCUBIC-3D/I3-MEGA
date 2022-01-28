@@ -53,6 +53,7 @@
 #include "language.h"
 #include "cardreader.h"
 #include "speed_lookuptable.h"
+#include "LoadAssist.h"
 
 #if HAS_DIGIPOTSS
   #include <SPI.h>
@@ -86,6 +87,13 @@ long Stepper::counter_X = 0,
      Stepper::counter_Y = 0,
      Stepper::counter_Z = 0,
      Stepper::counter_E = 0;
+
+bool waiting_to_retract = true;
+bool retracting = false;
+long counter_load_assist = 0;
+millis_t retract_time = 0;
+#define LOAD_ASSIST_MAX_STEPS 4400
+#define RETRACT_TIME_MS ((2000))
 
 volatile uint32_t Stepper::step_events_completed = 0; // The number of step events executed in the current block
 
@@ -338,6 +346,35 @@ void Stepper::isr() {
   CBI(TIMSK0, OCIE0B); //Temperature ISR
   DISABLE_STEPPER_DRIVER_INTERRUPT();
   sei();
+
+  // If we are retracting the load assist, check if it's okay to turn around
+  if (retracting) {
+    if (millis() - retract_time > RETRACT_TIME_MS) {
+      loadAssist.setExtend(EXTEND);
+      SERIAL_ECHOLN("Extending...");
+      counter_load_assist = 0;
+      waiting_to_retract = true;
+      retracting = false;
+    }
+  }
+  
+  // Do load assist steps before other steps since they are not part of the planning blocks
+  if (loadAssist.is_moving()) {
+    // If a minimum pulse time was specified get the CPU clock
+    #if STEP_PULSE_CYCLES > CYCLES_EATEN_BY_CODE
+      static uint32_t pulse_start;
+      pulse_start = TCNT0;
+    #endif
+    
+    loadAssist.start_pulse();
+
+    // For a minimum pulse time wait before stopping pulses
+    #if STEP_PULSE_CYCLES > CYCLES_EATEN_BY_CODE
+      while ((uint32_t)(TCNT0 - pulse_start) < STEP_PULSE_CYCLES - CYCLES_EATEN_BY_CODE) { /* nada */ }
+    #endif
+
+    loadAssist.stop_pulse();
+  }
   
   if (cleaning_buffer_counter) {
     --cleaning_buffer_counter;
@@ -711,6 +748,17 @@ void Stepper::isr() {
 
   // If current block is finished, reset pointer
   if (all_steps_done) {
+    // Update load assist state only once per step block
+    if (waiting_to_retract) {
+      counter_load_assist += current_block->steps[X_AXIS];
+      if (counter_load_assist > LOAD_ASSIST_MAX_STEPS) {
+        loadAssist.setExtend(RETRACT);
+        SERIAL_ECHOLN("Retracting...");
+        retract_time = millis();
+        waiting_to_retract = false;
+        retracting = true;
+      }
+    }
     current_block = NULL;
     planner.discard_current_block();
   }

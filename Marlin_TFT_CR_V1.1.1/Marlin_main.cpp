@@ -232,6 +232,7 @@
 #include "duration_t.h"
 #include "types.h"
 #include "music.h"
+#include "LoadAssist.h"
 
 
 char seekdataflag=0;
@@ -11451,6 +11452,8 @@ setup_OutageTestPin();
   #if ENABLED(USE_WATCHDOG)
     watchdog_init();
   #endif
+
+  loadAssist.init();
 
   stepper.init();    // Initialize stepper, this enables interrupts!
 //  servo_init();
