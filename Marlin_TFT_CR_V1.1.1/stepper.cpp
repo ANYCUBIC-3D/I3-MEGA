@@ -90,7 +90,7 @@ long Stepper::counter_X = 0,
 
 bool waiting_to_retract = true;
 bool retracting = false;
-long counter_load_assist = 0;
+long load_assist_last_E_position = 0;
 millis_t retract_time = 0;
 #define LOAD_ASSIST_MAX_STEPS 4400
 #define RETRACT_TIME_MS ((2000))
@@ -352,7 +352,6 @@ void Stepper::isr() {
     if (millis() - retract_time > RETRACT_TIME_MS) {
       loadAssist.setExtend(EXTEND);
       SERIAL_ECHOLN("Extending...");
-      counter_load_assist = 0;
       waiting_to_retract = true;
       retracting = false;
     }
@@ -600,6 +599,18 @@ void Stepper::isr() {
       #endif
     #endif // !ADVANCE && !LIN_ADVANCE
 
+    // Update load assist state after stepping
+    if (waiting_to_retract) {
+      if ((count_position[X_AXIS] - load_assist_last_E_position) > LOAD_ASSIST_MAX_STEPS) {
+        loadAssist.setExtend(RETRACT);
+        SERIAL_ECHOLN("Retracting...");
+        load_assist_last_E_position = count_position[X_AXIS];
+        retract_time = millis();
+        waiting_to_retract = false;
+        retracting = true;
+      }
+    }
+
     if (++step_events_completed >= current_block->step_event_count) {
       all_steps_done = true;
       break;
@@ -748,17 +759,6 @@ void Stepper::isr() {
 
   // If current block is finished, reset pointer
   if (all_steps_done) {
-    // Update load assist state only once per step block
-    if (waiting_to_retract) {
-      counter_load_assist += current_block->steps[X_AXIS];
-      if (counter_load_assist > LOAD_ASSIST_MAX_STEPS) {
-        loadAssist.setExtend(RETRACT);
-        SERIAL_ECHOLN("Retracting...");
-        retract_time = millis();
-        waiting_to_retract = false;
-        retracting = true;
-      }
-    }
     current_block = NULL;
     planner.discard_current_block();
   }
