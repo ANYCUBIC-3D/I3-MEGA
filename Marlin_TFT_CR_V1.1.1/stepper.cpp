@@ -601,10 +601,10 @@ void Stepper::isr() {
 
     // Update load assist state after stepping
     if (waiting_to_retract) {
-      if ((count_position[X_AXIS] - load_assist_last_E_position) > LOAD_ASSIST_MAX_STEPS) {
+      if ((count_position[E_AXIS] - load_assist_last_E_position) > LOAD_ASSIST_MAX_STEPS) {
         loadAssist.setExtend(RETRACT);
         SERIAL_ECHOLN("Retracting...");
-        load_assist_last_E_position = count_position[X_AXIS];
+        load_assist_last_E_position = count_position[E_AXIS];
         retract_time = millis();
         waiting_to_retract = false;
         retracting = true;
