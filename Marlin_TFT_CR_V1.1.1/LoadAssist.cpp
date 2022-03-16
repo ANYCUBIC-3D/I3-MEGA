@@ -67,9 +67,6 @@ void LoadAssist::init() {
     // pulse step to start first move
     SET_OUTPUT(LOADING_STEP_PIN);
     m_state = RETRACTED;
-    for (size_t i = 0; i < 32; i++) {
-        do_step();
-    }
 }
 
 void LoadAssist::setExtend(bool extend) {
