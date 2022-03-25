@@ -91,8 +91,15 @@ long Stepper::counter_X = 0,
 bool waiting_to_retract = true;
 bool retracting = false;
 long load_assist_last_E_position = 0;
+
+#define FilamentTestPin 19
+bool runOutTrig = false;
+bool filastickDetected = false;
+millis_t runOutInitialT,runOutNextT;
+#define FILASTICK_RUNOUT_TIME ((32))
+
 millis_t retract_time = 0;
-#define LOAD_ASSIST_MAX_STEPS 4400
+#define LOAD_ASSIST_MAX_STEPS ((4400))
 #define RETRACT_TIME_MS ((2000))
 
 volatile uint32_t Stepper::step_events_completed = 0; // The number of step events executed in the current block
@@ -599,15 +606,26 @@ void Stepper::isr() {
       #endif
     #endif // !ADVANCE && !LIN_ADVANCE
 
-    // Update load assist state after stepping
+    // Check if a new filastick needs to be loaded
     if (waiting_to_retract) {
-      if ((count_position[E_AXIS] - load_assist_last_E_position) > LOAD_ASSIST_MAX_STEPS) {
-        loadAssist.setExtend(RETRACT);
-        SERIAL_ECHOLN("Retracting...");
-        load_assist_last_E_position = count_position[E_AXIS];
-        retract_time = millis();
-        waiting_to_retract = false;
-        retracting = true;
+      filastickDetected = READ(FilamentTestPin);
+      if (!runOutTrig && !filastickDetected)
+      {
+        runOutInitialT = millis();
+        runOutTrig = true;
+      }
+      if (runOutTrig && !filastickDetected)
+      {
+        runOutNextT = millis();
+        if (runOutNextT - runOutInitialT >= FILASTICK_RUNOUT_TIME)
+        {
+          SERIAL_ECHOLN("Retracting...");
+          loadAssist.setExtend(RETRACT);
+          retract_time = millis();
+          retracting = true;
+          waiting_to_retract = false;
+          runOutTrig = false;
+        }
       }
     }
 
@@ -997,6 +1015,10 @@ void Stepper::init() {
   #if HAS_E3_STEP
     E_AXIS_INIT(3);
   #endif
+
+  // Configure FilaStick runout pin
+  pinMode(FilamentTestPin,INPUT);
+  WRITE(FilamentTestPin,HIGH);
 
   // waveform generation = 0100 = CTC
   CBI(TCCR1B, WGM13);
