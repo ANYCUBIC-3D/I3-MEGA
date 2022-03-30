@@ -88,19 +88,21 @@ long Stepper::counter_X = 0,
      Stepper::counter_Z = 0,
      Stepper::counter_E = 0;
 
-bool waiting_to_retract = true;
-bool retracting = false;
-long load_assist_last_E_position = 0;
+typedef enum LoadAssistState {
+  LOAD_ASSIST_WAITING_TO_LOAD = 0,
+  LOAD_ASSIST_RETRACTING = 1,
+  LOAD_ASSIST_EXTENDING = 2,
+} LoadAssistState;
+
+LoadAssistState loadAssistState = LOAD_ASSIST_WAITING_TO_LOAD;
+millis_t move_time = 0;
+#define LOAD_ASSIST_MOVE_TIME_MS ((2000))
 
 #define FilamentTestPin 19
 bool runOutTrig = false;
 bool filastickDetected = false;
 millis_t runOutInitialT,runOutNextT;
 #define FILASTICK_RUNOUT_TIME ((32))
-
-millis_t retract_time = 0;
-#define LOAD_ASSIST_MAX_STEPS ((4400))
-#define RETRACT_TIME_MS ((2000))
 
 volatile uint32_t Stepper::step_events_completed = 0; // The number of step events executed in the current block
 
@@ -354,13 +356,42 @@ void Stepper::isr() {
   DISABLE_STEPPER_DRIVER_INTERRUPT();
   sei();
 
+  // Check if a new filastick needs to be loaded
+  if (loadAssistState == LOAD_ASSIST_WAITING_TO_LOAD) {
+    filastickDetected = !READ(FilamentTestPin);
+    if (!runOutTrig && !filastickDetected)
+    {
+      runOutInitialT = millis();
+      runOutTrig = true;
+    }
+    if (runOutTrig && !filastickDetected)
+    {
+      runOutNextT = millis();
+      if (runOutNextT - runOutInitialT >= FILASTICK_RUNOUT_TIME)
+      {
+        SERIAL_ECHOLN("Retracting...");
+        loadAssist.setExtend(RETRACT);
+        move_time = millis();
+        loadAssistState = LOAD_ASSIST_RETRACTING;
+        runOutTrig = false;
+      }
+    }
+  }
+
   // If we are retracting the load assist, check if it's okay to turn around
-  if (retracting) {
-    if (millis() - retract_time > RETRACT_TIME_MS) {
+  if (loadAssistState == LOAD_ASSIST_RETRACTING) {
+    if (millis() - move_time > LOAD_ASSIST_MOVE_TIME_MS) {
       loadAssist.setExtend(EXTEND);
+      move_time = millis();
       SERIAL_ECHOLN("Extending...");
-      waiting_to_retract = true;
-      retracting = false;
+      loadAssistState = LOAD_ASSIST_EXTENDING;
+    }
+  }
+
+  // If we are extending the load assist, check if the move is finished
+  if (loadAssistState == LOAD_ASSIST_EXTENDING) {
+    if (millis() - move_time > LOAD_ASSIST_MOVE_TIME_MS) {
+      loadAssistState = LOAD_ASSIST_WAITING_TO_LOAD;
     }
   }
   
@@ -605,29 +636,6 @@ void Stepper::isr() {
         PULSE_STOP(E);
       #endif
     #endif // !ADVANCE && !LIN_ADVANCE
-
-    // Check if a new filastick needs to be loaded
-    if (waiting_to_retract) {
-      filastickDetected = READ(FilamentTestPin);
-      if (!runOutTrig && !filastickDetected)
-      {
-        runOutInitialT = millis();
-        runOutTrig = true;
-      }
-      if (runOutTrig && !filastickDetected)
-      {
-        runOutNextT = millis();
-        if (runOutNextT - runOutInitialT >= FILASTICK_RUNOUT_TIME)
-        {
-          SERIAL_ECHOLN("Retracting...");
-          loadAssist.setExtend(RETRACT);
-          retract_time = millis();
-          retracting = true;
-          waiting_to_retract = false;
-          runOutTrig = false;
-        }
-      }
-    }
 
     if (++step_events_completed >= current_block->step_event_count) {
       all_steps_done = true;
