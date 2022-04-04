@@ -88,22 +88,6 @@ long Stepper::counter_X = 0,
      Stepper::counter_Z = 0,
      Stepper::counter_E = 0;
 
-typedef enum LoadAssistState {
-  LOAD_ASSIST_WAITING_TO_LOAD = 0,
-  LOAD_ASSIST_RETRACTING = 1,
-  LOAD_ASSIST_EXTENDING = 2,
-} LoadAssistState;
-
-LoadAssistState loadAssistState = LOAD_ASSIST_WAITING_TO_LOAD;
-millis_t move_time = 0;
-#define LOAD_ASSIST_MOVE_TIME_MS ((2000))
-
-#define FilamentTestPin 19
-bool runOutTrig = false;
-bool filastickDetected = false;
-millis_t runOutInitialT,runOutNextT;
-#define FILASTICK_RUNOUT_TIME ((32))
-
 volatile uint32_t Stepper::step_events_completed = 0; // The number of step events executed in the current block
 
 #if ENABLED(ADVANCE) || ENABLED(LIN_ADVANCE)
@@ -356,62 +340,7 @@ void Stepper::isr() {
   DISABLE_STEPPER_DRIVER_INTERRUPT();
   sei();
 
-  // Check if a new filastick needs to be loaded
-  if (loadAssistState == LOAD_ASSIST_WAITING_TO_LOAD) {
-    filastickDetected = !READ(FilamentTestPin);
-    if (!runOutTrig && !filastickDetected)
-    {
-      runOutInitialT = millis();
-      runOutTrig = true;
-    }
-    if (runOutTrig && !filastickDetected)
-    {
-      runOutNextT = millis();
-      if (runOutNextT - runOutInitialT >= FILASTICK_RUNOUT_TIME)
-      {
-        SERIAL_ECHOLN("Retracting...");
-        loadAssist.setExtend(RETRACT);
-        move_time = millis();
-        loadAssistState = LOAD_ASSIST_RETRACTING;
-        runOutTrig = false;
-      }
-    }
-  }
-
-  // If we are retracting the load assist, check if it's okay to turn around
-  if (loadAssistState == LOAD_ASSIST_RETRACTING) {
-    if (millis() - move_time > LOAD_ASSIST_MOVE_TIME_MS) {
-      loadAssist.setExtend(EXTEND);
-      move_time = millis();
-      SERIAL_ECHOLN("Extending...");
-      loadAssistState = LOAD_ASSIST_EXTENDING;
-    }
-  }
-
-  // If we are extending the load assist, check if the move is finished
-  if (loadAssistState == LOAD_ASSIST_EXTENDING) {
-    if (millis() - move_time > LOAD_ASSIST_MOVE_TIME_MS) {
-      loadAssistState = LOAD_ASSIST_WAITING_TO_LOAD;
-    }
-  }
-  
-  // Do load assist steps before other steps since they are not part of the planning blocks
-  if (loadAssist.is_moving()) {
-    // If a minimum pulse time was specified get the CPU clock
-    #if STEP_PULSE_CYCLES > CYCLES_EATEN_BY_CODE
-      static uint32_t pulse_start;
-      pulse_start = TCNT0;
-    #endif
-    
-    loadAssist.start_pulse();
-
-    // For a minimum pulse time wait before stopping pulses
-    #if STEP_PULSE_CYCLES > CYCLES_EATEN_BY_CODE
-      while ((uint32_t)(TCNT0 - pulse_start) < STEP_PULSE_CYCLES - CYCLES_EATEN_BY_CODE) { /* nada */ }
-    #endif
-
-    loadAssist.stop_pulse();
-  }
+  loadAssist.tick_state_machine();
   
   if (cleaning_buffer_counter) {
     --cleaning_buffer_counter;
@@ -1023,10 +952,6 @@ void Stepper::init() {
   #if HAS_E3_STEP
     E_AXIS_INIT(3);
   #endif
-
-  // Configure FilaStick runout pin
-  pinMode(FilamentTestPin,INPUT);
-  WRITE(FilamentTestPin,HIGH);
 
   // waveform generation = 0100 = CTC
   CBI(TCCR1B, WGM13);

@@ -1,4 +1,5 @@
 #pragma once
+#include "types.h"
 
 class LoadAssist;
 extern LoadAssist loadAssist;
@@ -7,10 +8,12 @@ extern LoadAssist loadAssist;
 #define EXTEND  true
 
 enum load_assist_state_t {
-    RETRACTED = 0,
-    RETRACTING = 1,
-    EXTENDED = 2,
-    EXTENDING = 3,
+    WAITING_TO_RETRACT = 0,
+    PULSING_RETRACTION = 1,
+    RETRACTING = 2,
+    RETRACTED = 3,
+    PULSING_EXTENSION = 4,
+    EXTENDING = 5,
 };
 
 /**
@@ -24,10 +27,17 @@ enum load_assist_state_t {
 class LoadAssist
 {
 private:
-    int m_step_counter;
+    int m_stepCounter;
+    bool m_runOutTrig;
+    millis_t m_runOutInitialT;
+    millis_t m_moveTime;
     load_assist_state_t m_state;
 
+    /**
+     * @brief Manually pulse a step in blocking mode
+     */
     void do_step();
+
 public:
     LoadAssist();
     
@@ -38,9 +48,14 @@ public:
     void init();
 
     /**
-     * @brief Is the Load Assist currently mid motion
+     * @brief Tick the state machine of the Load Assist. Must be called 1/stepper ISR.
      */
-    bool is_moving();
+    void tick_state_machine();
+
+    /**
+     * @brief Is the Load Assist pulsing the stepper output
+     */
+    bool is_pulsing();
 
     /**
      * @brief Starts a pulse (if needed)
